@@ -18,16 +18,16 @@ if st.button("Summarize Notes"):
         bullets = []
 
         for p in parts:
-            # Look for number + word sequences (e.g., 2 Urban Cruise)
-            matches = re.findall(r"\d+\s+[A-Za-z0-9\-]+(?:\s+[A-Za-z0-9\-]+)*", p)
+            # Pattern: number followed by all words until next number
+            matches = re.findall(r'\d+\s+(?:[^\d]+)', p)
             if matches:
-                # Main text before the first match
+                # Main text before first match
                 first_match_index = p.find(matches[0])
                 main_text = p[:first_match_index].strip()
                 if main_text:
                     bullets.append(f"- {main_text}")
                 for m in matches:
-                    bullets.append(f"  - {m}")
+                    bullets.append(f"  - {m.strip()}")
             else:
                 bullets.append(f"- {p}")
 
