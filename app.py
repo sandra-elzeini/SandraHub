@@ -11,25 +11,25 @@ if st.button("Summarize Notes"):
         st.warning("Please enter some notes first!")
     else:
         # Split notes by period or newline
-        parts = re.split(r"[.\n]", raw_notes)
-        # Filter out very short fragments
-        parts = [p.strip() for p in parts if len(p.strip().split()) > 2]
+        lines = re.split(r"[.\n]", raw_notes)
+        lines = [l.strip() for l in lines if len(l.strip()) > 2]
 
         bullets = []
 
-        for p in parts:
-            # Pattern: number followed by all words until next number
-            matches = re.findall(r'\d+\s+(?:[^\d]+)', p)
-            if matches:
-                # Main text before first match
-                first_match_index = p.find(matches[0])
-                main_text = p[:first_match_index].strip()
-                if main_text:
-                    bullets.append(f"- {main_text}")
-                for m in matches:
-                    bullets.append(f"  - {m.strip()}")
-            else:
-                bullets.append(f"- {p}")
+        for line in lines:
+            # Pattern: find all sequences like "number + words" ignoring 'and'
+            matches = re.findall(r'\d+\s+(?:[^\d]+?)(?=\s+\d|\s*$)', line)
+            # Extract main text before first match
+            first_match_index = line.find(matches[0]) if matches else -1
+            main_text = line[:first_match_index].strip() if first_match_index > 0 else ""
+            if main_text:
+                bullets.append(f"- {main_text}")
+
+            for m in matches:
+                # Clean up trailing 'and' and extra spaces
+                clean_m = m.replace("and", "").strip()
+                if clean_m:
+                    bullets.append(f"  - {clean_m}")
 
         # Display summary
         st.subheader("Summary:")
