@@ -22,24 +22,24 @@ if st.button("Summarize Notes"):
                     i += 1
                     continue  # skip 'and'
 
-                # Start new bullet if word starts with a digit
-                if word[0].isdigit():
+                # Start a bullet if word starts with a digit and next word exists
+                if word[0].isdigit() and i + 1 < len(words):
                     if temp_bullet:
                         bullets.append("  - " + " ".join(temp_bullet))
-                    temp_bullet = [word]
+                        temp_bullet = []
 
-                    # Append following words that do not start with a digit
+                    # Start collecting bullet
+                    bullet_words = [word]
                     i += 1
-                    while i < len(words) and not words[i][0].isdigit() and words[i].lower() != "and":
-                        temp_bullet.append(words[i])
+                    while i < len(words) and not (words[i][0].isdigit() and (i+1 < len(words) and words[i+1].isalpha())):
+                        if words[i].lower() != "and":
+                            bullet_words.append(words[i])
                         i += 1
-                    bullets.append("  - " + " ".join(temp_bullet))
-                    temp_bullet = []
+                    bullets.append("  - " + " ".join(bullet_words))
                 else:
                     temp_bullet.append(word)
                     i += 1
 
-            # Add leftover words if any
             if temp_bullet:
                 bullets.append("  - " + " ".join(temp_bullet))
 
