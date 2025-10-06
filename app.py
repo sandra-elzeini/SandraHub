@@ -10,21 +10,24 @@ if st.button("Summarize Notes"):
     if raw_notes.strip() == "":
         st.warning("Please enter some notes first!")
     else:
-        # Split notes by period, comma, or newline
-        parts = re.split(r"[.\n,]", raw_notes)
+        # Split notes by period or newline
+        parts = re.split(r"[.\n]", raw_notes)
         # Filter out very short fragments
         parts = [p.strip() for p in parts if len(p.strip().split()) > 2]
 
-        # Format bullets: detect numbers for sub-points
         bullets = []
+
         for p in parts:
-            # If numbers detected, split them for sub-bullets
-            numbers = re.findall(r"\d+\s?\w*", p)
-            if numbers and len(numbers) > 1:
-                main_text = p.split(numbers[0])[0].strip()
-                bullets.append(f"- {main_text}")
-                for n in numbers:
-                    bullets.append(f"  - {n}")
+            # Look for number + word sequences (e.g., 2 Urban Cruise)
+            matches = re.findall(r"\d+\s+[A-Za-z0-9\-]+(?:\s+[A-Za-z0-9\-]+)*", p)
+            if matches:
+                # Main text before the first match
+                first_match_index = p.find(matches[0])
+                main_text = p[:first_match_index].strip()
+                if main_text:
+                    bullets.append(f"- {main_text}")
+                for m in matches:
+                    bullets.append(f"  - {m}")
             else:
                 bullets.append(f"- {p}")
 
