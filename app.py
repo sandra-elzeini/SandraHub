@@ -9,19 +9,17 @@ if st.button("Summarize Notes"):
     if raw_notes.strip() == "":
         st.warning("Please enter some notes first!")
     else:
-        words = raw_notes.split()
+        # Split into words across all lines
+        words = [w for w in raw_notes.replace("\n", " ").split() if w.lower() != "and"]
+
         bullets = []
         temp_bullet = []
-
         i = 0
+
         while i < len(words):
             word = words[i]
-            # Skip filler words
-            if word.lower() == "and":
-                i += 1
-                continue
 
-            # If word starts with a digit, start a new car bullet
+            # If word starts with a digit, start a new bullet
             if word[0].isdigit():
                 if temp_bullet:
                     bullets.append("  - " + " ".join(temp_bullet))
@@ -29,10 +27,11 @@ if st.button("Summarize Notes"):
 
                 temp_bullet.append(word)
                 i += 1
-                # Include following words until next word that starts with a digit
+                # Collect following words until next word starts with a digit
                 while i < len(words) and not words[i][0].isdigit():
                     temp_bullet.append(words[i])
                     i += 1
+
                 bullets.append("  - " + " ".join(temp_bullet))
                 temp_bullet = []
             else:
