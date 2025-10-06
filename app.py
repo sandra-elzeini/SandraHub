@@ -9,33 +9,41 @@ if st.button("Summarize Notes"):
     if raw_notes.strip() == "":
         st.warning("Please enter some notes first!")
     else:
-        lines = [line.strip() for line in raw_notes.split("\n") if line.strip() != ""]
         bullets = []
 
+        # Split input into lines
+        lines = [line.strip() for line in raw_notes.split("\n") if line.strip() != ""]
+        
         for line in lines:
             words = line.split()
-            temp_bullet = []
             i = 0
+            temp_bullet = []
+
             while i < len(words):
                 word = words[i]
+                # Skip filler words
                 if word.lower() == "and":
                     i += 1
-                    continue  # skip 'and'
+                    continue
 
-                # Start a bullet if word starts with a digit and next word exists
-                if word[0].isdigit() and i + 1 < len(words):
-                    if temp_bullet:
-                        bullets.append("  - " + " ".join(temp_bullet))
-                        temp_bullet = []
-
-                    # Start collecting bullet
-                    bullet_words = [word]
+                # Start new bullet if temp_bullet is empty and word starts with number
+                if not temp_bullet and word[0].isdigit():
+                    temp_bullet.append(word)
                     i += 1
-                    while i < len(words) and not (words[i][0].isdigit() and (i+1 < len(words) and words[i+1].isalpha())):
-                        if words[i].lower() != "and":
-                            bullet_words.append(words[i])
+                    # Add following words until next number that starts a new item
+                    while i < len(words):
+                        next_word = words[i]
+                        # If next word starts with digit AND previous word is also a number -> keep together
+                        if next_word[0].isdigit() and temp_bullet[-1][0].isdigit():
+                            temp_bullet.append(next_word)
+                        # If next word starts with digit AND previous word is NOT a number -> break
+                        elif next_word[0].isdigit() and not temp_bullet[-1][0].isdigit():
+                            break
+                        else:
+                            temp_bullet.append(next_word)
                         i += 1
-                    bullets.append("  - " + " ".join(bullet_words))
+                    bullets.append("  - " + " ".join(temp_bullet))
+                    temp_bullet = []
                 else:
                     temp_bullet.append(word)
                     i += 1
