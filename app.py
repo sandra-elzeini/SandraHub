@@ -10,26 +10,24 @@ if st.button("Summarize Notes"):
     if not raw_notes.strip():
         st.warning("Please enter some notes first!")
     else:
-        # Combine all lines into one string
-        text = raw_notes.replace("\n", " ")
-
+        text = raw_notes.replace("\n", " ")  # Combine everything into one line
         bullets = []
 
-        # Regex: match any sequence starting with a number followed by words until the next number
-        matches = re.findall(r'\d+\s+(?:[^\d]+?)(?=\s+\d|$)', text)
+        # Regex: match all sequences like "number + words" until next number
+        car_matches = re.findall(r'\d+\s+(?:[^\d]+?)(?=\s+\d|$)', text)
 
-        # Extract main text before first match
-        first_match = matches[0] if matches else ""
-        first_index = text.find(first_match)
-        main_text = text[:first_index].strip() if first_index > 0 else ""
-        if main_text:
-            bullets.append(f"- {main_text}")
+        # Find intro text before first car number
+        if car_matches:
+            first_index = text.find(car_matches[0])
+            intro_text = text[:first_index].strip()
+            if intro_text:
+                bullets.append(f"- {intro_text}")
 
-        # Add matches as bullets
-        for m in matches:
-            clean_m = m.replace("and", "").strip()
-            if clean_m:
-                bullets.append(f"- {clean_m}")
+        # Add each car as a bullet
+        for car in car_matches:
+            clean_car = car.replace("and", "").strip()
+            if clean_car:
+                bullets.append(f"- {clean_car}")
 
         # Display summary
         st.subheader("Summary:")
