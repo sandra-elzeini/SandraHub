@@ -1,4 +1,5 @@
 import streamlit as st
+import re
 
 st.title("SandraHub — Personal AI Assistant")
 st.write("Paste your meeting notes below to get a clean summary.")
@@ -6,42 +7,31 @@ st.write("Paste your meeting notes below to get a clean summary.")
 raw_notes = st.text_area("Paste your meeting notes here:")
 
 if st.button("Summarize Notes"):
-    if raw_notes.strip() == "":
+    if not raw_notes.strip():
         st.warning("Please enter some notes first!")
     else:
-        # 1. Join all lines into a single sequence of words
-        words = [w for w in raw_notes.replace("\n", " ").split() if w.lower() != "and"]
+        # Combine all lines into one string
+        text = raw_notes.replace("\n", " ")
 
         bullets = []
-        temp_bullet = []
-        i = 0
 
-        while i < len(words):
-            word = words[i]
-            # 2. Start a new bullet if the word starts with a digit
-            if word[0].isdigit():
-                if temp_bullet:
-                    bullets.append("  - " + " ".join(temp_bullet))
-                    temp_bullet = []
+        # Regex: match any sequence starting with a number followed by words until the next number
+        matches = re.findall(r'\d+\s+(?:[^\d]+?)(?=\s+\d|$)', text)
 
-                temp_bullet.append(word)
-                i += 1
-                # 3. Keep adding words until next word starts with a digit
-                while i < len(words) and not words[i][0].isdigit():
-                    temp_bullet.append(words[i])
-                    i += 1
+        # Extract main text before first match
+        first_match = matches[0] if matches else ""
+        first_index = text.find(first_match)
+        main_text = text[:first_index].strip() if first_index > 0 else ""
+        if main_text:
+            bullets.append(f"- {main_text}")
 
-                bullets.append("  - " + " ".join(temp_bullet))
-                temp_bullet = []
-            else:
-                temp_bullet.append(word)
-                i += 1
+        # Add matches as bullets
+        for m in matches:
+            clean_m = m.replace("and", "").strip()
+            if clean_m:
+                bullets.append(f"- {clean_m}")
 
-        # 4. Add leftover text as a bullet
-        if temp_bullet:
-            bullets.append("  - " + " ".join(temp_bullet))
-
-        # 5. Display summary
+        # Display summary
         st.subheader("Summary:")
         for b in bullets:
             st.write(b)
