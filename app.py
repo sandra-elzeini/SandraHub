@@ -23,11 +23,12 @@ if st.button("✨ Generate Meeting Minutes"):
             summary_list = summarizer(notes, max_length=250, min_length=50, do_sample=False)
             summary_text = summary_list[0]['summary_text']
 
-        # Split summary into smaller points
+        # Aggressive splitting of sentences
         raw_sentences = re.split(r'[.!?]', summary_text)
         sentences = []
         for s in raw_sentences:
-            for part in re.split(r' - | : ', s):
+            # Split at " - ", " : ", or capital letters following lowercase/closing parenthesis
+            for part in re.split(r' - | : |(?<=[a-z\)])\s+(?=[A-Z])', s):
                 part_clean = part.strip()
                 if part_clean:
                     sentences.append(part_clean)
@@ -42,9 +43,8 @@ if st.button("✨ Generate Meeting Minutes"):
         task_keywords = r'\b(Farah|Omar|Sandra|QA|assigned|prepare|provide|review|finalize|begin|complete|responsible)\b'
         event_keywords = r'\b(meeting|launch|event|deadline|decision|starts|begins|confirmed|discussion|design)\b'
 
+        # Categorize sentences
         for s in sentences:
-            s_lower = s.lower()
-            # Assign tasks by person
             person_found = re.findall(r'\b(Farah|Omar|Sandra|QA)\b', s, re.IGNORECASE)
             if person_found or re.search(task_keywords, s, re.IGNORECASE):
                 if person_found:
