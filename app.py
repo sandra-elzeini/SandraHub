@@ -1,9 +1,8 @@
 import streamlit as st
 import re
-from heapq import nlargest
 
-st.title("SandraHub — Simplified Offline Summarizer 🧠")
-st.write("Paste your notes to get short, grouped, clear bullet points!")
+st.title("SandraHub — Clean Offline Summarizer 🧠")
+st.write("Paste your notes to get a short, well-organized summary!")
 
 text = st.text_area("📝 Paste your notes here:")
 
@@ -15,24 +14,29 @@ if st.button("✨ Summarize Notes"):
         text = re.sub(r'\s+', ' ', text)
         sentences = re.split(r'(?<=[.!?])\s+', text)
 
-        # Group sentences by category
         times = []
         tasks = []
         events = []
         other = []
 
-        for s in sentences:
-            s_lower = s.lower()
-            if re.search(r'\b\d{1,2}(:\d{2})?\s*(am|pm)?\b', s_lower) or re.search(r'\bnext\b|\bnovember\b|\boctober\b', s_lower):
-                times.append(s.strip())
-            elif re.search(r'\b(task|to do|qa|farah|omar|sandra|assigned|prepare)\b', s_lower):
-                tasks.append(s.strip())
-            elif re.search(r'\b(meeting|launch|event|discussion|deadline)\b', s_lower):
-                events.append(s.strip())
-            else:
-                other.append(s.strip())
+        # Patterns
+        time_pattern = r'\b\d{1,2}(:\d{2})?\s*(AM|PM|am|pm)?\b|\b(next|today|tomorrow|October|November|Nov|Oct)\b'
+        task_pattern = r'\b(Farah|Omar|Sandra|QA|assigned|prepare|provide|review|finalize|begin)\b'
+        event_pattern = r'\b(meeting|launch|event|deadline|discussion|decision|starts|begins|confirmed)\b'
 
-        st.subheader("🧠 Simplified Summary:")
+        for s in sentences:
+            s_clean = s.strip()
+            s_lower = s_clean.lower()
+            if re.search(time_pattern, s_clean):
+                times.append(s_clean)
+            elif re.search(task_pattern, s_clean):
+                tasks.append(s_clean)
+            elif re.search(event_pattern, s_clean):
+                events.append(s_clean)
+            else:
+                other.append(s_clean)
+
+        st.subheader("🧠 Smart Summary")
 
         if times:
             st.write("🕒 Times & Dates:")
