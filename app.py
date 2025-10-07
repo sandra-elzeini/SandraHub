@@ -1,12 +1,11 @@
 import streamlit as st
 from datetime import datetime, timedelta
 from pymongo import MongoClient
-import json
 
 # ---------------------------
 # MongoDB Connection
 # ---------------------------
-mongo_uri = st.secrets["mongodb"]["uri"]
+mongo_uri = st.secrets["mongodb"]["uri"]  # Set in secrets.toml
 client = MongoClient(mongo_uri)
 db = client["sandrahub_db"]
 notes_collection = db["weekly_notes"]
@@ -14,8 +13,8 @@ notes_collection = db["weekly_notes"]
 # ---------------------------
 # Helper Functions
 # ---------------------------
-def get_week_start_from_date(date):
-    """Return the Sunday of the week for a given date"""
+def get_week_start(date):
+    """Return Sunday of the week for a given date"""
     return date - timedelta(days=date.weekday() + 1 if date.weekday() != 6 else 0)
 
 def format_week_range(start_date):
@@ -24,64 +23,67 @@ def format_week_range(start_date):
     return f"{start_date.strftime('%b %d')} - {end_date.strftime('%b %d, %Y')}"
 
 def get_or_create_week_notes(year, week_number):
-    """Get notes doc for a specific year and week number, or create if missing"""
+    """Get notes doc for a week, or create if missing"""
     week_key = f"{year}-W{week_number}"
     doc = notes_collection.find_one({"week": week_key})
     if not doc:
-        # Initialize week with empty days
-        first_day = datetime.strptime(f'{year}-W{week_number}-0', "%Y-W%W-%w")
-        days = { (first_day + timedelta(days=i)).strftime("%Y-%m-%d"): [] for i in range(7) }
+        # Initialize empty days for the week
+        start_date = datetime.strptime(f'{year}-W{week_number}-0', "%Y-W%W-%w")  # Sunday
+        days = { (start_date + timedelta(days=i)).strftime("%Y-%m-%d") : [] for i in range(7) }
         doc = {"week": week_key, "days": days}
         notes_collection.insert_one(doc)
     return doc
 
 def save_week_notes(doc):
-    notes_collection.replace_one({"_id": doc["_id"]}, doc)
+    """Update week notes in MongoDB"""
+    notes_collection.update_one({"week": doc["week"]}, {"$set": {"days": doc["days"]}})
 
 # ---------------------------
-# Sidebar: Year & Week Selection
+# Sidebar: Year and Week selection
 # ---------------------------
-st.sidebar.header("Select Year and Week")
+st.sidebar.header("Select Year & Week")
 current_year = datetime.today().year
-selected_year = st.sidebar.number_input("Year", min_value=2020, max_value=2100, value=current_year, step=1)
+selected_year = st.sidebar.selectbox("Year:", list(range(current_year-1, current_year+2)), index=1)
 
+# Weeks in year
+weeks_in_year = 52
+week_numbers = list(range(1, weeks_in_year+1))
 today = datetime.today()
-current_week = today.isocalendar()[1]
-selected_week = st.sidebar.number_input("Week Number", min_value=1, max_value=53, value=current_week, step=1)
+current_week_number = today.isocalendar()[1] if today.year == selected_year else 1
+selected_week_number = st.sidebar.selectbox("Week:", week_numbers, index=current_week_number-1)
 
-week_doc = get_or_create_week_notes(selected_year, selected_week)
+# Load or create week notes
+week_doc = get_or_create_week_notes(selected_year, selected_week_number)
+week_start_date = datetime.strptime(f'{selected_year}-W{selected_week_number}-0', "%Y-W%W-%w")
+week_str = format_week_range(week_start_date)
 
-# ---------------------------
-# Sidebar: Day Selection
-# ---------------------------
-week_days = list(week_doc["days"].keys())
-week_day_labels = [datetime.strptime(d, "%Y-%m-%d").strftime("%A (%b %d, %Y)") for d in week_days]
-
-selected_day_idx = st.sidebar.radio("Select Day", range(7), format_func=lambda i: week_day_labels[i])
-selected_day_str = week_days[selected_day_idx]
-
-# ---------------------------
-# Main Display
-# ---------------------------
 st.title("SandraHub — Notes for the Week 📝")
-st.markdown(f"Week: **{format_week_range(datetime.strptime(week_days[0], '%Y-%m-%d'))}**")
-
-# Highlight current day
-is_current_day = selected_day_str == today.strftime("%Y-%m-%d")
-if is_current_day:
-    st.subheader(f"📝 Notes for Today ({datetime.strptime(selected_day_str, '%Y-%m-%d').strftime('%A, %b %d, %Y')})")
-else:
-    st.subheader(f"Notes for {datetime.strptime(selected_day_str, '%Y-%m-%d').strftime('%A, %b %d, %Y')}")
+st.subheader(f"Week: {week_str}")
 
 # ---------------------------
-# Display Existing Notes
+# Day selection
 # ---------------------------
+st.sidebar.header("Select Day")
+week_dates = [week_start_date + timedelta(days=i) for i in range(7)]
+selected_day = st.sidebar.selectbox(
+    "Day:",
+    week_dates,
+    index=(today.weekday()+1 if today.weekday()!=6 else 0),
+    format_func=lambda d: f"{d.strftime('%A')} ({d.strftime('%b %d, %Y')})"
+)
+selected_day_str = selected_day.strftime("%Y-%m-%d")
+
+# ---------------------------
+# Display notes for selected day
+# ---------------------------
+st.subheader(f"📝 Notes for {selected_day.strftime('%A, %b %d, %Y')}")
+
 day_notes = week_doc["days"].get(selected_day_str, [])
-delete_index = None
 
-st.write("📝 Existing Notes:")
+# --- Display notes with delete button ---
+delete_index = None
 for i, note_item in enumerate(day_notes.copy()):
-    note_text = note_item.get("note", "") if isinstance(note_item, dict) else note_item
+    note_text = note_item.get("note") if isinstance(note_item, dict) else note_item
     done_status = note_item.get("done", False) if isinstance(note_item, dict) else False
 
     col1, col2 = st.columns([0.9, 0.1])
@@ -97,7 +99,7 @@ for i, note_item in enumerate(day_notes.copy()):
     else:
         day_notes[i] = {"note": note_text, "done": done_checkbox}
 
-# Delete note safely
+# Delete note after loop
 if delete_index is not None:
     day_notes.pop(delete_index)
     week_doc["days"][selected_day_str] = day_notes
@@ -105,10 +107,9 @@ if delete_index is not None:
     st.experimental_rerun()
 
 # ---------------------------
-# Add New Note
+# Add new note
 # ---------------------------
 new_note = st.text_area("Add a new note:")
-
 if st.button("💾 Save Note"):
     if new_note.strip():
         day_notes.append({"note": new_note.strip(), "done": False})
@@ -120,7 +121,8 @@ if st.button("💾 Save Note"):
         st.warning("Please enter a note before saving!")
 
 # ---------------------------
-# Optional: Download Week Notes
+# Optional: Download all notes
 # ---------------------------
-all_notes_str = json.dumps(notes_collection.find_one({"week": week_doc["week"]}), default=str, indent=2)
-st.download_button("💾 Download This Week's Notes", all_notes_str, file_name=f"weekly_notes_{week_doc['week']}.json")
+import json
+all_notes_str = json.dumps(week_doc, indent=2)
+st.download_button("💾 Download This Week's Notes", all_notes_str, file_name=f"weekly_notes_{selected_year}_W{selected_week_number}.json")
