@@ -16,59 +16,48 @@ if st.button("✨ Summarize Notes"):
     if not raw_notes.strip():
         st.warning("Please enter some notes first!")
     else:
-        text = raw_notes.replace("\n", " ")  # Combine into one line
+        text = raw_notes.replace("\n", " ")
         text = re.sub(r'\s+', ' ', text).strip()
 
         bullets = []
 
-        # Detect category
-        category = "General text"
-        if "car" in text.lower() or "mro" in text.lower():
-            category = "Vehicle notes 🚗"
-        elif "meeting" in text.lower():
-            category = "Meeting notes 📝"
-        elif "task" in text.lower() or "todo" in text.lower():
-            category = "To-do list ✅"
+        # Detect general topic category
+        category = "General notes"
+        if re.search(r'\bmeeting\b', text, re.IGNORECASE):
+            category = "Meeting reminder 🗓️"
+        elif re.search(r'\bevent\b', text, re.IGNORECASE):
+            category = "Event or activity 🎉"
+        elif re.search(r'\bcoffee|drink\b', text, re.IGNORECASE):
+            category = "Personal reminder ☕"
+        elif re.search(r'\bpray|prayer\b', text, re.IGNORECASE):
+            category = "Faith reminder 🙏"
+
         st.info(f"Detected category: {category}")
 
-        # Extract car or number+name patterns
-        car_matches = re.findall(r'\d+\s+(?:[^\d]+?)(?=\s+\d|$)', text)
-
-        # Find intro before first number
-        if car_matches:
-            first_index = text.find(car_matches[0])
-            intro_text = text[:first_index].strip()
-            if intro_text:
-                bullets.append(f"{intro_text}")
-
-        # Add each car or item as a bullet
-        for car in car_matches:
-            clean_car = car.replace("and", "").strip()
-            if clean_car:
-                bullets.append(clean_car)
-
-        # Task detection
-        tasks = re.findall(r'(?:todo|to do|task|action):?\s*(.+?)(?:\.|$)', text, re.IGNORECASE)
-        if tasks:
-            bullets.append("🧾 Tasks Detected:")
-            for t in tasks:
+        # 🕒 Extract time expressions safely (e.g., "8", "12 - 4", "8:30")
+        times = re.findall(r'\b\d{1,2}(?::\d{2})?\s*(?:-\s*\d{1,2}(?::\d{2})?)?\b', text)
+        if times:
+            bullets.append("🕒 Times mentioned:")
+            for t in times:
                 bullets.append(f"  - {t.strip()}")
 
-        # Date detection
+        # ✏️ Extract sentences or fragments for better bullet separation
+        parts = re.split(r'(?<=[.!?])\s+|\s+and\s+', text)
+        for p in parts:
+            p = p.strip()
+            if p:
+                bullets.append(p)
+
+        # 📅 Extract possible date formats (optional future use)
         dates = re.findall(r'\b\d{1,2}/\d{1,2}/\d{2,4}\b', text)
         if dates:
-            bullets.append("📅 Dates Found:")
+            bullets.append("📅 Dates found:")
             for d in dates:
                 bullets.append(f"  - {d}")
 
-        # Keyword detection
-        keywords = re.findall(r'\b(ud|f1|rav4|mro|desktop)\b', text, re.IGNORECASE)
-        if keywords:
-            bullets.append("🔑 Keywords Found:")
-            bullets.append(", ".join(sorted(set(keywords), key=str.lower)))
-
-        # Format summary output
+        # 🧠 Display smart summary
         st.subheader("🧠 Smart Summary:")
+
         if style == "Bulleted list":
             for b in bullets:
                 st.write(f"- {b}")
@@ -78,7 +67,7 @@ if st.button("✨ Summarize Notes"):
         else:
             st.write(" ".join(bullets))
 
-        # Save summary to text file
+        # 💾 Allow download
         summary_text = "\n".join(bullets)
         st.download_button(
             label="💾 Download Summary as TXT",
