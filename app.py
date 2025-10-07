@@ -1,11 +1,12 @@
 import streamlit as st
 from datetime import datetime, timedelta
 from pymongo import MongoClient
+import json
 
 # ---------------------------
 # MongoDB Connection
 # ---------------------------
-mongo_uri = st.secrets["mongodb"]["uri"]  # Make sure your secrets.toml has the correct uri
+mongo_uri = st.secrets["mongodb"]["uri"]
 client = MongoClient(mongo_uri)
 db = client["sandrahub_db"]
 notes_collection = db["weekly_notes"]
@@ -28,12 +29,8 @@ def get_or_create_week_notes(year, week_number):
     doc = notes_collection.find_one({"week": week_key})
     if not doc:
         # Initialize week with empty days
-        # Get the Sunday of that week
         first_day = datetime.strptime(f'{year}-W{week_number}-0', "%Y-W%W-%w")
-        days = {}
-        for i in range(7):
-            day = first_day + timedelta(days=i)
-            days[day.strftime("%Y-%m-%d")] = []
+        days = { (first_day + timedelta(days=i)).strftime("%Y-%m-%d"): [] for i in range(7) }
         doc = {"week": week_key, "days": days}
         notes_collection.insert_one(doc)
     return doc
@@ -63,16 +60,14 @@ week_day_labels = [datetime.strptime(d, "%Y-%m-%d").strftime("%A (%b %d, %Y)") f
 selected_day_idx = st.sidebar.radio("Select Day", range(7), format_func=lambda i: week_day_labels[i])
 selected_day_str = week_days[selected_day_idx]
 
-# Highlight current day/week
-is_current_week = selected_year == today.year and selected_week == today.isocalendar()[1]
-is_current_day = selected_day_str == today.strftime("%Y-%m-%d")
-
+# ---------------------------
+# Main Display
+# ---------------------------
 st.title("SandraHub — Notes for the Week 📝")
-if is_current_week:
-    st.markdown(f"**📅 Current Week: {format_week_range(datetime.strptime(week_days[0], '%Y-%m-%d'))}**")
-else:
-    st.markdown(f"Week: {format_week_range(datetime.strptime(week_days[0], '%Y-%m-%d'))}")
+st.markdown(f"Week: **{format_week_range(datetime.strptime(week_days[0], '%Y-%m-%d'))}**")
 
+# Highlight current day
+is_current_day = selected_day_str == today.strftime("%Y-%m-%d")
 if is_current_day:
     st.subheader(f"📝 Notes for Today ({datetime.strptime(selected_day_str, '%Y-%m-%d').strftime('%A, %b %d, %Y')})")
 else:
@@ -82,8 +77,7 @@ else:
 # Display Existing Notes
 # ---------------------------
 day_notes = week_doc["days"].get(selected_day_str, [])
-
-delete_idx = None
+delete_index = None
 
 st.write("📝 Existing Notes:")
 for i, note_item in enumerate(day_notes.copy()):
@@ -95,7 +89,7 @@ for i, note_item in enumerate(day_notes.copy()):
         done_checkbox = st.checkbox(note_text, value=done_status, key=f"{selected_day_str}_{i}")
     with col2:
         if st.button("❌", key=f"delete_{selected_day_str}_{i}"):
-            delete_idx = i  # mark for deletion
+            delete_index = i
 
     # Update done status
     if isinstance(note_item, dict):
@@ -103,9 +97,9 @@ for i, note_item in enumerate(day_notes.copy()):
     else:
         day_notes[i] = {"note": note_text, "done": done_checkbox}
 
-# Delete note if clicked
-if delete_idx is not None:
-    day_notes.pop(delete_idx)
+# Delete note safely
+if delete_index is not None:
+    day_notes.pop(delete_index)
     week_doc["days"][selected_day_str] = day_notes
     save_week_notes(week_doc)
     st.experimental_rerun()
@@ -116,18 +110,17 @@ if delete_idx is not None:
 new_note = st.text_area("Add a new note:")
 
 if st.button("💾 Save Note"):
-    if not new_note.strip():
-        st.warning("Please enter a note before saving!")
-    else:
+    if new_note.strip():
         day_notes.append({"note": new_note.strip(), "done": False})
         week_doc["days"][selected_day_str] = day_notes
         save_week_notes(week_doc)
         st.success("Note saved!")
         st.experimental_rerun()
+    else:
+        st.warning("Please enter a note before saving!")
 
 # ---------------------------
-# Optional: Download all notes
+# Optional: Download Week Notes
 # ---------------------------
-import json
 all_notes_str = json.dumps(notes_collection.find_one({"week": week_doc["week"]}), default=str, indent=2)
 st.download_button("💾 Download This Week's Notes", all_notes_str, file_name=f"weekly_notes_{week_doc['week']}.json")
