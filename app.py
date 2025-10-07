@@ -10,7 +10,6 @@ st.title("SandraHub — Notes for the Week 📝")
 # Helper Functions
 # ---------------------
 def get_week_dates(start_date):
-    """Return list of dates (datetime) from Sunday to Saturday of the week of start_date"""
     start_of_week = start_date - timedelta(days=start_date.weekday()+1 if start_date.weekday() != 6 else 0)
     return [start_of_week + timedelta(days=i) for i in range(7)]
 
@@ -45,21 +44,20 @@ selected_day = st.sidebar.selectbox(
     week_dates,
     format_func=lambda d: f"{d.strftime('%A')} ({d.strftime('%b %d, %Y')})"
 )
-
 selected_day_str = format_date(selected_day)
 
 # ---------------------
 # Notes area
 # ---------------------
 st.subheader(f"Notes for {selected_day.strftime('%A, %b %d, %Y')}")
-
-# Initialize day notes if not present
 day_notes = notes_data.get(selected_day_str, [])
+
+# Create a copy of day_notes for safe iteration
+updated_notes = []
 
 # Display existing notes with checkboxes
 st.write("📝 Existing Notes:")
 for i, note_item in enumerate(day_notes):
-    # note_item can be string or dict with done status
     if isinstance(note_item, dict):
         note_text = note_item.get("note", "")
         done_status = note_item.get("done", False)
@@ -68,25 +66,20 @@ for i, note_item in enumerate(day_notes):
         done_status = False
 
     done_checkbox = st.checkbox(note_text, value=done_status, key=f"{selected_day_str}_{i}")
-    # Update done status
-    if isinstance(note_item, dict):
-        note_item["done"] = done_checkbox
-    else:
-        day_notes[i] = {"note": note_text, "done": done_checkbox}
+    updated_notes.append({"note": note_text, "done": done_checkbox})
 
-# Save updated done status
-notes_data[selected_day_str] = day_notes
+# Save updated notes
+notes_data[selected_day_str] = updated_notes
 save_notes(notes_data)
 
 # Add new note
 new_note = st.text_area("Add a new note:")
-
 if st.button("💾 Save Note"):
     if not new_note.strip():
         st.warning("Please enter a note before saving!")
     else:
-        day_notes.append({"note": new_note.strip(), "done": False})
-        notes_data[selected_day_str] = day_notes
+        updated_notes.append({"note": new_note.strip(), "done": False})
+        notes_data[selected_day_str] = updated_notes
         save_notes(notes_data)
         st.success("Note saved!")
 
