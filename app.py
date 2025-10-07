@@ -20,7 +20,12 @@ if st.button("✨ Generate Meeting Minutes"):
         st.warning("Please paste some notes first.")
     else:
         with st.spinner("Generating summary... ⏳"):
-            summary_list = summarizer(notes, max_length=250, min_length=50, do_sample=False)
+            # Preprocess notes: remove excessive newlines and multiple spaces
+            clean_notes = re.sub(r'\n+', ' ', notes)  # replace newlines with space
+            clean_notes = re.sub(r'\s+', ' ', clean_notes)  # collapse multiple spaces
+
+            # Generate summary
+            summary_list = summarizer(clean_notes, max_length=250, min_length=50, do_sample=False)
             summary_text = summary_list[0]['summary_text']
 
         # Aggressive splitting of sentences
@@ -39,7 +44,7 @@ if st.button("✨ Generate Meeting Minutes"):
         tasks_dict = defaultdict(list)
 
         # Keyword patterns
-        time_keywords = r'\b\d{1,2}(:\d{2})?\s*(AM|PM|am|pm)?\b|\b(next|today|tomorrow|October|November|Nov|Oct)\b'
+        time_keywords = r'\b\d{1,2}(:\d{2})?\s*(AM|PM|am|pm)?\b|\b(next|today|tomorrow|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|October|November|Nov|Oct)\b'
         task_keywords = r'\b(Farah|Omar|Sandra|QA|assigned|prepare|provide|review|finalize|begin|complete|responsible)\b'
         event_keywords = r'\b(meeting|launch|event|deadline|decision|starts|begins|confirmed|discussion|design)\b'
 
