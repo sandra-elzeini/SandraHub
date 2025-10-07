@@ -5,7 +5,7 @@ from pymongo import MongoClient
 # ---------------------------
 # MongoDB Connection
 # ---------------------------
-mongo_uri = st.secrets["mongodb"]["uri"]  # Your MongoDB URI in secrets.toml
+mongo_uri = st.secrets["mongodb"]["uri"]
 client = MongoClient(mongo_uri)
 db = client["sandrahub_db"]
 notes_collection = db["weekly_notes"]
@@ -27,7 +27,6 @@ def generate_all_weeks(year):
     """Return a list of week start dates (Sundays) for the whole year"""
     first_day = date(year, 1, 1)
     last_day = date(year, 12, 31)
-    # Find first Sunday
     first_sunday = first_day - timedelta(days=first_day.weekday() + 1 if first_day.weekday() != 6 else 0)
     weeks = []
     current = first_sunday
@@ -43,17 +42,12 @@ def get_or_create_week_notes(week_start):
     
     doc = notes_collection.find_one({"week": week_key})
     if not doc:
-        # Initialize week with empty days
-        days = {}
-        for i in range(7):
-            day = week_start + timedelta(days=i)
-            days[day.strftime("%Y-%m-%d")] = []
+        days = { (week_start + timedelta(days=i)).strftime("%Y-%m-%d"): [] for i in range(7) }
         doc = {"week": week_key, "days": days}
         notes_collection.insert_one(doc)
     return doc
 
 def save_day_notes(week_key, day_str, notes_list):
-    """Save notes for a specific day"""
     notes_collection.update_one(
         {"week": week_key},
         {"$set": {f"days.{day_str}": notes_list}}
@@ -66,41 +60,52 @@ def save_day_notes(week_key, day_str, notes_list):
 st.set_page_config(page_title="SandraHub — Weekly Notes", page_icon="📝")
 st.title("SandraHub — Notes for the Week 📝")
 
-# Today
 today = datetime.today().date()
-all_weeks = generate_all_weeks(today.year)
+current_year = today.year
+
+# Sidebar: select year
+years = list(range(current_year - 5, current_year + 6))
+selected_year = st.sidebar.selectbox("Choose Year:", years, index=years.index(current_year))
 
 # Sidebar: select week
-# Automatically select the current week
-default_idx = 0
+all_weeks = generate_all_weeks(selected_year)
+# Highlight current week if in this year
+default_week_idx = 0
 for i, wk in enumerate(all_weeks):
     if get_week_start(today) == wk:
-        default_idx = i
+        default_week_idx = i
         break
 
 selected_week_start = st.sidebar.radio(
     "Choose a week:",
     all_weeks,
-    index=default_idx,
+    index=default_week_idx,
     format_func=lambda d: format_week_range(d)
 )
 
-# Load or create week in MongoDB
 week_doc = get_or_create_week_notes(selected_week_start)
 week_iso = selected_week_start.isocalendar()
 week_key = f"{week_iso[0]}-W{week_iso[1]}"
 week_days = week_doc["days"]
 
 # Sidebar: select day
+# Highlight today if current week, else default to first day
+default_day_idx = 0
+if selected_week_start <= today <= selected_week_start + timedelta(days=6):
+    default_day_idx = (today - selected_week_start).days
+
 selected_day_str = st.sidebar.selectbox(
     "Choose a day:",
     list(week_days.keys()),
-    index=(today - selected_week_start).days if selected_week_start <= today <= selected_week_start + timedelta(days=6) else 0
+    index=default_day_idx
 )
 
-st.subheader(f"Notes for {datetime.strptime(selected_day_str, '%Y-%m-%d').strftime('%A, %b %d, %Y')}")
+# Highlight today visually in header
+day_obj = datetime.strptime(selected_day_str, "%Y-%m-%d").date()
+highlight_today = " (Today)" if day_obj == today else ""
+st.subheader(f"Notes for {day_obj.strftime('%A, %b %d, %Y')}{highlight_today}")
 
-# Load day notes
+# Load notes
 day_notes = week_days.get(selected_day_str, [])
 
 # Display existing notes with checkboxes
@@ -133,6 +138,5 @@ if st.button("💾 Save Note"):
         save_day_notes(week_key, selected_day_str, day_notes)
         st.success("Note saved!")
 
-# Optional: Download all notes
-all_notes_str = str(week_doc)
-st.download_button("💾 Download This Week's Notes", all_notes_str, file_name=f"{week_key}_notes.json")
+# Optional: download this week's notes
+st.download_button("💾 Download This Week's Notes", str(week_doc), file_name=f"{week_key}_notes.json")
