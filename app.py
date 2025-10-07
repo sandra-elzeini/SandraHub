@@ -9,7 +9,7 @@ st.title("SandraHub — Notes for the Week 📝")
 # ---------------------------
 # MongoDB Connection
 # ---------------------------
-mongo_uri = st.secrets["mongodb"]["uri"]  # Make sure your secrets.toml has the correct uri
+mongo_uri = st.secrets["mongodb"]["uri"]
 client = MongoClient(mongo_uri)
 db = client["sandrahub_db"]
 notes_collection = db["weekly_notes"]
@@ -47,16 +47,13 @@ def clean_doc_for_json(doc):
     return doc_clean
 
 # ---------------------------
-# Session State for safe reruns
+# Session State Defaults
 # ---------------------------
 if "week_index" not in st.session_state:
-    today = datetime.today()
-    current_year = today.year
-    current_week_start = get_week_start(today)
-    st.session_state["week_index"] = None  # We'll set below
+    st.session_state["week_index"] = None
 
 if "day_index" not in st.session_state:
-    st.session_state["day_index"] = None  # We'll set below
+    st.session_state["day_index"] = None
 
 # ---------------------------
 # Sidebar: Year / Week / Day selection
@@ -81,8 +78,8 @@ if st.session_state["week_index"] is None:
         st.session_state["week_index"] = 0
 
 week_selected_index = st.sidebar.selectbox(
-    "Select Week", range(len(weeks)), 
-    format_func=lambda i: week_display[i], 
+    "Select Week", range(len(weeks)),
+    format_func=lambda i: week_display[i],
     index=st.session_state["week_index"]
 )
 st.session_state["week_index"] = week_selected_index
@@ -101,7 +98,7 @@ if st.session_state["day_index"] is None:
         st.session_state["day_index"] = 0
 
 day_selected_index = st.sidebar.selectbox(
-    "Select Day", range(7), 
+    "Select Day", range(7),
     format_func=lambda i: days[i].strftime("%A, %b %d, %Y"),
     index=st.session_state["day_index"]
 )
@@ -122,9 +119,9 @@ st.subheader(f"Week: {format_week_range(week_start)}")
 st.write(f"📝 Notes for {day_selected.strftime('%A, %b %d, %Y')}")
 
 st.write("📝 Existing Notes:")
-for i, note in enumerate(day_notes):
+for i, note in enumerate(day_notes.copy()):
     note_text = note if isinstance(note, str) else note.get("note", "")
-    col1, col2 = st.columns([0.9,0.1])
+    col1, col2 = st.columns([0.9, 0.1])
     with col1:
         st.text_input(f"Note {i+1}", value=note_text, key=f"{day_str}_{i}")
     with col2:
@@ -132,7 +129,7 @@ for i, note in enumerate(day_notes):
             day_notes.pop(i)
             week_doc["days"][day_str] = day_notes
             save_week_notes(week_doc)
-            st.experimental_rerun()  # Safe rerun via session_state
+            st.success("Note deleted!")
 
 # ---------------------------
 # Add new note
@@ -144,7 +141,6 @@ if st.button("💾 Save Note"):
         week_doc["days"][day_str] = day_notes
         save_week_notes(week_doc)
         st.success("Note saved!")
-        st.experimental_rerun()
     else:
         st.warning("Please enter a note before saving!")
 
