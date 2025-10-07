@@ -1,96 +1,81 @@
 import streamlit as st
-import re
-from collections import defaultdict
+from datetime import datetime, timedelta
+import json
+import os
 
-st.set_page_config(page_title="SandraHub — Smart Meeting Minutes", page_icon="🧠")
-st.title("SandraHub — Offline Smart Meeting Minutes 🧠")
-st.write("Paste your meeting notes to get **clean, categorized, and grouped meeting minutes**.")
+st.set_page_config(page_title="SandraHub — Weekly Notes", page_icon="📝")
+st.title("SandraHub — Notes for the Week 📝")
 
-# Input area
-notes = st.text_area("📝 Paste your meeting notes here:")
+# ---------------------
+# Helper Functions
+# ---------------------
+def get_week_dates(start_date):
+    """Return list of dates (datetime) from Sunday to Saturday of the week of start_date"""
+    start_of_week = start_date - timedelta(days=start_date.weekday()+1 if start_date.weekday() != 6 else 0)
+    return [start_of_week + timedelta(days=i) for i in range(7)]
 
-if st.button("✨ Generate Meeting Minutes"):
-    if not notes.strip():
-        st.warning("Please paste some notes first.")
+def format_date(date_obj):
+    return date_obj.strftime("%Y-%m-%d")
+
+def load_notes(file_path="weekly_notes.json"):
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_notes(data, file_path="weekly_notes.json"):
+    with open(file_path, "w") as f:
+        json.dump(data, f, indent=2)
+
+# ---------------------
+# Load or initialize notes
+# ---------------------
+notes_data = load_notes()
+
+# ---------------------
+# Week selection
+# ---------------------
+today = datetime.today()
+# Default: current week
+week_dates = get_week_dates(today)
+week_str = f"{week_dates[0].strftime('%b %d')} - {week_dates[-1].strftime('%b %d, %Y')}"
+
+st.sidebar.header("Select Day")
+selected_day = st.sidebar.selectbox(
+    "Choose a day:",
+    week_dates,
+    format_func=lambda d: f"{d.strftime('%A')} ({d.strftime('%b %d, %Y')})"
+)
+
+selected_day_str = format_date(selected_day)
+
+# ---------------------
+# Notes area
+# ---------------------
+st.subheader(f"Notes for {selected_day.strftime('%A, %b %d, %Y')}")
+
+# Show existing notes for the day
+day_notes = notes_data.get(selected_day_str, [])
+
+if day_notes:
+    st.write("📝 Existing Notes:")
+    for i, note in enumerate(day_notes, 1):
+        st.write(f"{i}. {note}")
+
+# Add new note
+new_note = st.text_area("Add a new note:")
+
+if st.button("💾 Save Note"):
+    if not new_note.strip():
+        st.warning("Please enter a note before saving!")
     else:
-        # Step 1: Clean input
-        clean_notes = re.sub(r'\n+', ' ', notes)  # replace newlines with space
-        clean_notes = re.sub(r'\s+', ' ', clean_notes)  # collapse multiple spaces
+        notes_data.setdefault(selected_day_str, []).append(new_note.strip())
+        save_notes(notes_data)
+        st.success("Note saved!")
+        st.experimental_rerun()  # Refresh page to show updated notes
 
-        # Step 2: Split into sentences/bullets
-        raw_sentences = re.split(r'(?<=[.!?])\s+|(?<=\d)\s| and | then ', clean_notes)
-        sentences = [s.strip() for s in raw_sentences if s.strip()]
-
-        # Step 3: Initialize sections
-        times = []
-        events = []
-        tasks_dict = defaultdict(list)
-
-        # Step 4: Define keyword patterns
-        time_pattern = re.compile(
-            r'\b\d{1,2}(:\d{2})?\s*(AM|PM|am|pm)?\b|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|October|November|Oct|Nov|\bnext\b|\btoday\b|\btomorrow\b',
-            re.IGNORECASE
-        )
-        event_pattern = re.compile(
-            r'\b(meeting|launch|event|deadline|decision|starts|begins|confirmed|discussion|design|reassigned|priority|test|project)\b',
-            re.IGNORECASE
-        )
-        task_pattern = re.compile(
-            r'\b(Farah|Omar|Sandra|QA|assigned|prepare|provide|review|finalize|begin|complete|responsible)\b',
-            re.IGNORECASE
-        )
-
-        # Step 5: Categorize each sentence
-        for s in sentences:
-            # Times / Dates
-            if re.search(time_pattern, s):
-                times.append(s)
-            # Tasks
-            elif re.search(task_pattern, s):
-                # Assign to a person if name exists, else to General
-                persons = re.findall(r'\b(Farah|Omar|Sandra|QA)\b', s, re.IGNORECASE)
-                if persons:
-                    for person in persons:
-                        tasks_dict[person].append(s)
-                else:
-                    tasks_dict["General"].append(s)
-            # Events / Decisions
-            elif re.search(event_pattern, s):
-                events.append(s)
-            else:
-                # Default to Events
-                events.append(s)
-
-        # Step 6: Display structured minutes with expanders
-        if times:
-            with st.expander("🕒 Times & Dates"):
-                for t in times:
-                    st.write(f"- {t}")
-
-        if events:
-            with st.expander("📌 Key Events / Decisions"):
-                for e in events:
-                    st.write(f"- {e}")
-
-        if tasks_dict:
-            with st.expander("✅ Tasks / Responsibilities"):
-                for person, tasks in tasks_dict.items():
-                    st.write(f"**{person}:**")
-                    for t in tasks:
-                        # Bold names in the task for clarity
-                        t_bold = re.sub(r'\b(Farah|Omar|Sandra|QA)\b', r'**\1**', t)
-                        st.write(f"- {t_bold}")
-
-        # Step 7: Downloadable minutes
-        all_minutes = ""
-        if times:
-            all_minutes += "🕒 Times & Dates:\n" + "\n".join(times) + "\n\n"
-        if events:
-            all_minutes += "📌 Key Events / Decisions:\n" + "\n".join(events) + "\n\n"
-        if tasks_dict:
-            all_minutes += "✅ Tasks / Responsibilities:\n"
-            for person, tasks in tasks_dict.items():
-                all_minutes += f"{person}:\n"
-                for t in tasks:
-                    all_minutes += f"- {t}\n"
-        st.download_button("💾 Download Minutes as .txt", all_minutes, file_name="meeting_minutes.txt")
+# ---------------------
+# Optional: Download all notes
+# ---------------------
+all_notes_str = json.dumps(notes_data, indent=2)
+st.download_button("💾 Download All Notes", all_notes_str, file_name="weekly_notes.json")
