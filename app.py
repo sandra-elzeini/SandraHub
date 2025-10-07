@@ -1,9 +1,10 @@
 import streamlit as st
 from transformers import pipeline
 import re
+from collections import defaultdict
 
 st.title("SandraHub — Professional Meeting Minutes 🧠")
-st.write("Paste your meeting notes to get a concise, categorized summary.")
+st.write("Paste your meeting notes to get concise, categorized, and grouped meeting minutes.")
 
 # Load the summarization model once
 @st.cache_resource
@@ -22,7 +23,7 @@ if st.button("✨ Generate Meeting Minutes"):
             summary_list = summarizer(notes, max_length=250, min_length=50, do_sample=False)
             summary_text = summary_list[0]['summary_text']
 
-        # Split into sentences, also split at "-" or ":"
+        # Split summary into smaller points
         raw_sentences = re.split(r'[.!?]', summary_text)
         sentences = []
         for s in raw_sentences:
@@ -34,24 +35,29 @@ if st.button("✨ Generate Meeting Minutes"):
         # Prepare categories
         times = []
         events = []
-        tasks = []
+        tasks_dict = defaultdict(list)
 
         # Keyword patterns
         time_keywords = r'\b\d{1,2}(:\d{2})?\s*(AM|PM|am|pm)?\b|\b(next|today|tomorrow|October|November|Nov|Oct)\b'
         task_keywords = r'\b(Farah|Omar|Sandra|QA|assigned|prepare|provide|review|finalize|begin|complete|responsible)\b'
         event_keywords = r'\b(meeting|launch|event|deadline|decision|starts|begins|confirmed|discussion|design)\b'
 
-        # Categorize sentences
         for s in sentences:
             s_lower = s.lower()
-            if re.search(task_keywords, s, re.IGNORECASE):
-                tasks.append(s)
+            # Assign tasks by person
+            person_found = re.findall(r'\b(Farah|Omar|Sandra|QA)\b', s, re.IGNORECASE)
+            if person_found or re.search(task_keywords, s, re.IGNORECASE):
+                if person_found:
+                    for person in person_found:
+                        tasks_dict[person].append(s)
+                else:
+                    tasks_dict["General"].append(s)
             elif re.search(event_keywords, s, re.IGNORECASE):
                 events.append(s)
             elif re.search(time_keywords, s, re.IGNORECASE):
                 times.append(s)
             else:
-                events.append(s)  # Default to events if uncategorized
+                events.append(s)  # Default to events
 
         # Display structured summary
         st.subheader("🧠 Smart Meeting Minutes")
@@ -66,7 +72,9 @@ if st.button("✨ Generate Meeting Minutes"):
             for e in events:
                 st.write(f"- {e}")
 
-        if tasks:
+        if tasks_dict:
             st.write("✅ Tasks / Responsibilities:")
-            for t in tasks:
-                st.write(f"- {t}")
+            for person, tasks in tasks_dict.items():
+                st.write(f"**{person}:**")
+                for t in tasks:
+                    st.write(f"- {t}")
