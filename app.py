@@ -1,11 +1,11 @@
 import streamlit as st
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from pymongo import MongoClient
 
 # ---------------------------
 # MongoDB Connection
 # ---------------------------
-mongo_uri = st.secrets["mongodb"]["uri"]  # Ensure your secrets.toml has your URI
+mongo_uri = st.secrets["mongodb"]["uri"]  # Your MongoDB URI in secrets.toml
 client = MongoClient(mongo_uri)
 db = client["sandrahub_db"]
 notes_collection = db["weekly_notes"]
@@ -14,20 +14,33 @@ notes_collection = db["weekly_notes"]
 # Helper Functions
 # ---------------------------
 
-def get_week_start(date):
+def get_week_start(date_obj):
     """Return the Sunday of the week for a given date"""
-    return date - timedelta(days=date.weekday() + 1 if date.weekday() != 6 else 0)
+    return date_obj - timedelta(days=date_obj.weekday() + 1 if date_obj.weekday() != 6 else 0)
 
 def format_week_range(start_date):
     """Return string like Oct 05 - Oct 11, 2025"""
     end_date = start_date + timedelta(days=6)
     return f"{start_date.strftime('%b %d')} - {end_date.strftime('%b %d, %Y')}"
 
+def generate_all_weeks(year):
+    """Return a list of week start dates (Sundays) for the whole year"""
+    first_day = date(year, 1, 1)
+    last_day = date(year, 12, 31)
+    # Find first Sunday
+    first_sunday = first_day - timedelta(days=first_day.weekday() + 1 if first_day.weekday() != 6 else 0)
+    weeks = []
+    current = first_sunday
+    while current <= last_day:
+        weeks.append(current)
+        current += timedelta(days=7)
+    return weeks
+
 def get_or_create_week_notes(week_start):
     """Get notes doc for a week, or create if missing"""
     week_iso = week_start.isocalendar()  # year, week number, weekday
     week_key = f"{week_iso[0]}-W{week_iso[1]}"
-
+    
     doc = notes_collection.find_one({"week": week_key})
     if not doc:
         # Initialize week with empty days
@@ -39,76 +52,87 @@ def get_or_create_week_notes(week_start):
         notes_collection.insert_one(doc)
     return doc
 
-def save_day_note(week_key, day_str, note_text):
-    """Append a note to a specific day in the week"""
+def save_day_notes(week_key, day_str, notes_list):
+    """Save notes for a specific day"""
     notes_collection.update_one(
         {"week": week_key},
-        {"$push": {f"days.{day_str}": note_text}}
+        {"$set": {f"days.{day_str}": notes_list}}
     )
 
 # ---------------------------
-# Streamlit UI
+# Streamlit Layout
 # ---------------------------
 
 st.set_page_config(page_title="SandraHub — Weekly Notes", page_icon="📝")
 st.title("SandraHub — Notes for the Week 📝")
 
-today = datetime.today()
+# Today
+today = datetime.today().date()
+all_weeks = generate_all_weeks(today.year)
 
-# ---------------------------
-# Generate list of weeks for selection (past and future weeks)
-# ---------------------------
-start_year = datetime(today.year, 1, 1)
-weeks_list = []
-for i in range(0, 52):  # Adjust as needed for more weeks
-    week_start = get_week_start(start_year + timedelta(weeks=i))
-    weeks_list.append(week_start)
+# Sidebar: select week
+# Automatically select the current week
+default_idx = 0
+for i, wk in enumerate(all_weeks):
+    if get_week_start(today) == wk:
+        default_idx = i
+        break
 
-# Sidebar: choose a week
-selected_week_start = st.sidebar.selectbox(
+selected_week_start = st.sidebar.radio(
     "Choose a week:",
-    weeks_list,
+    all_weeks,
+    index=default_idx,
     format_func=lambda d: format_week_range(d)
 )
 
-# Load or create the week in MongoDB
+# Load or create week in MongoDB
 week_doc = get_or_create_week_notes(selected_week_start)
-week_key = week_doc["week"]
+week_iso = selected_week_start.isocalendar()
+week_key = f"{week_iso[0]}-W{week_iso[1]}"
+week_days = week_doc["days"]
 
-# Sidebar: choose a day
-selected_day = st.sidebar.selectbox(
+# Sidebar: select day
+selected_day_str = st.sidebar.selectbox(
     "Choose a day:",
-    [selected_week_start + timedelta(days=i) for i in range(7)],
-    format_func=lambda d: f"{d.strftime('%A')} ({d.strftime('%b %d, %Y')})"
+    list(week_days.keys()),
+    index=(today - selected_week_start).days if selected_week_start <= today <= selected_week_start + timedelta(days=6) else 0
 )
 
-day_str = selected_day.strftime("%Y-%m-%d")
-day_notes = week_doc["days"].get(day_str, [])
+st.subheader(f"Notes for {datetime.strptime(selected_day_str, '%Y-%m-%d').strftime('%A, %b %d, %Y')}")
 
-# ---------------------------
-# Display notes
-# ---------------------------
-st.subheader(f"Notes for {selected_day.strftime('%A, %b %d, %Y')}")
+# Load day notes
+day_notes = week_days.get(selected_day_str, [])
 
-if day_notes:
-    st.write("📝 Existing Notes:")
-    for note in day_notes:
-        st.write(f"- {note}")
-else:
-    st.write("No notes yet for this day.")
+# Display existing notes with checkboxes
+st.write("📝 Existing Notes:")
+for i, note_item in enumerate(day_notes):
+    if isinstance(note_item, dict):
+        note_text = note_item.get("note", "")
+        done_status = note_item.get("done", False)
+    else:
+        note_text = note_item
+        done_status = False
+
+    done_checkbox = st.checkbox(note_text, value=done_status, key=f"{selected_day_str}_{i}")
+    if isinstance(note_item, dict):
+        note_item["done"] = done_checkbox
+    else:
+        day_notes[i] = {"note": note_text, "done": done_checkbox}
+
+# Save updated day notes
+save_day_notes(week_key, selected_day_str, day_notes)
 
 # Add new note
 new_note = st.text_area("Add a new note:")
 
 if st.button("💾 Save Note"):
-    if new_note.strip():
-        save_day_note(week_key, day_str, new_note.strip())
-        st.success("Note saved! Refresh the page to see it.")
-    else:
+    if not new_note.strip():
         st.warning("Please enter a note before saving!")
+    else:
+        day_notes.append({"note": new_note.strip(), "done": False})
+        save_day_notes(week_key, selected_day_str, day_notes)
+        st.success("Note saved!")
 
-# Optional: download all notes
-if st.button("💾 Download All Notes"):
-    import json
-    all_notes = list(notes_collection.find({}, {"_id": 0}))
-    st.download_button("Download JSON", json.dumps(all_notes, indent=2), file_name="all_notes.json")
+# Optional: Download all notes
+all_notes_str = str(week_doc)
+st.download_button("💾 Download This Week's Notes", all_notes_str, file_name=f"{week_key}_notes.json")
