@@ -9,7 +9,7 @@ st.title("SandraHub — Notes for the Week 📝")
 # ---------------------------
 # MongoDB Connection
 # ---------------------------
-mongo_uri = st.secrets["mongodb"]["uri"]  # Must be set in Streamlit secrets.toml
+mongo_uri = st.secrets["mongodb"]["uri"]  # Make sure your secrets.toml has the correct uri
 client = MongoClient(mongo_uri)
 db = client["sandrahub_db"]
 notes_collection = db["weekly_notes"]
@@ -28,7 +28,7 @@ def format_week_range(start_date):
 
 def get_or_create_week_notes(week_start):
     """Get notes doc for a week, or create if missing"""
-    week_key = week_start.strftime("%Y-%m-%d")  # Using week start date as key
+    week_key = week_start.strftime("%Y-%m-%d")
     doc = notes_collection.find_one({"week_start": week_key})
     if not doc:
         days = { (week_start + timedelta(days=i)).strftime("%Y-%m-%d"): [] for i in range(7) }
@@ -47,21 +47,65 @@ def clean_doc_for_json(doc):
     return doc_clean
 
 # ---------------------------
+# Session State for safe reruns
+# ---------------------------
+if "week_index" not in st.session_state:
+    today = datetime.today()
+    current_year = today.year
+    current_week_start = get_week_start(today)
+    st.session_state["week_index"] = None  # We'll set below
+
+if "day_index" not in st.session_state:
+    st.session_state["day_index"] = None  # We'll set below
+
+# ---------------------------
 # Sidebar: Year / Week / Day selection
 # ---------------------------
 current_year = datetime.today().year
-year_selected = st.sidebar.selectbox("Select Year", list(range(current_year-1, current_year+5)), index=1)
+year_selected = st.sidebar.selectbox(
+    "Select Year", list(range(current_year-1, current_year+5)), index=1
+)
 
 # Generate weeks for the selected year
 first_day = datetime(year_selected, 1, 1)
 weeks = [get_week_start(first_day + timedelta(days=i*7)) for i in range(53)]
 week_display = [format_week_range(w) for w in weeks]
-week_selected_index = st.sidebar.selectbox("Select Week", range(len(weeks)), format_func=lambda i: week_display[i])
+
+# Default to current week if session state not set
+if st.session_state["week_index"] is None:
+    for i, w in enumerate(weeks):
+        if w <= datetime.today() <= w + timedelta(days=6):
+            st.session_state["week_index"] = i
+            break
+    if st.session_state["week_index"] is None:
+        st.session_state["week_index"] = 0
+
+week_selected_index = st.sidebar.selectbox(
+    "Select Week", range(len(weeks)), 
+    format_func=lambda i: week_display[i], 
+    index=st.session_state["week_index"]
+)
+st.session_state["week_index"] = week_selected_index
 week_start = weeks[week_selected_index]
 
 # Generate days for selected week
 days = [week_start + timedelta(days=i) for i in range(7)]
-day_selected_index = st.sidebar.selectbox("Select Day", range(7), format_func=lambda i: days[i].strftime("%A, %b %d, %Y"))
+
+# Default to current day if session state not set
+if st.session_state["day_index"] is None:
+    for i, d in enumerate(days):
+        if d.date() == datetime.today().date():
+            st.session_state["day_index"] = i
+            break
+    if st.session_state["day_index"] is None:
+        st.session_state["day_index"] = 0
+
+day_selected_index = st.sidebar.selectbox(
+    "Select Day", range(7), 
+    format_func=lambda i: days[i].strftime("%A, %b %d, %Y"),
+    index=st.session_state["day_index"]
+)
+st.session_state["day_index"] = day_selected_index
 day_selected = days[day_selected_index]
 day_str = day_selected.strftime("%Y-%m-%d")
 
@@ -88,7 +132,7 @@ for i, note in enumerate(day_notes):
             day_notes.pop(i)
             week_doc["days"][day_str] = day_notes
             save_week_notes(week_doc)
-            st.experimental_rerun()
+            st.experimental_rerun()  # Safe rerun via session_state
 
 # ---------------------------
 # Add new note
