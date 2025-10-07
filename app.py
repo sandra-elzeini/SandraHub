@@ -14,7 +14,7 @@ notes_collection = db["weekly_notes"]
 # Helper Functions
 # ---------------------------
 def get_week_start(date):
-    """Return the Sunday of the week for a given date"""
+    """Return Sunday of the week for a given date"""
     return date - timedelta(days=date.weekday() + 1 if date.weekday() != 6 else 0)
 
 def format_week_range(start_date):
@@ -45,11 +45,8 @@ today = datetime.today()
 if "selected_date" not in st.session_state:
     st.session_state.selected_date = today
 
-if "save_trigger" not in st.session_state:
-    st.session_state.save_trigger = False
-
 # ---------------------------
-# Select Year (optional)
+# Select Year
 # ---------------------------
 year_options = list(range(today.year - 1, today.year + 2))
 selected_year = st.selectbox("Select Year", year_options, index=year_options.index(today.year))
@@ -85,7 +82,7 @@ if st.button("💾 Save Note"):
         week_doc["days"][day_str] = day_notes
         save_week_notes(week_doc)
         st.success("Note saved!")
-        st.session_state.save_trigger = True  # safe rerun
+        st.experimental_rerun()  # safe rerun only after saving
 
 # ---------------------------
 # Delete notes
@@ -100,11 +97,4 @@ for i, note in enumerate(day_notes.copy()):
             week_doc["days"][day_str] = day_notes
             save_week_notes(week_doc)
             st.success("Note deleted!")
-            st.session_state.save_trigger = True
-
-# ---------------------------
-# Safe rerun if triggered
-# ---------------------------
-if st.session_state.save_trigger:
-    st.session_state.save_trigger = False
-    st.experimental_rerun()
+            st.experimental_rerun()  # safe rerun only after deleting
