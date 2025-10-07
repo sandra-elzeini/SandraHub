@@ -36,11 +36,10 @@ notes_data = load_notes()
 # Week selection
 # ---------------------
 today = datetime.today()
-# Default: current week
 week_dates = get_week_dates(today)
 week_str = f"{week_dates[0].strftime('%b %d')} - {week_dates[-1].strftime('%b %d, %Y')}"
 
-st.sidebar.header("Select Day")
+st.sidebar.header(f"Notes for the Week ({week_str})")
 selected_day = st.sidebar.selectbox(
     "Choose a day:",
     week_dates,
@@ -54,13 +53,30 @@ selected_day_str = format_date(selected_day)
 # ---------------------
 st.subheader(f"Notes for {selected_day.strftime('%A, %b %d, %Y')}")
 
-# Show existing notes for the day
+# Initialize day notes if not present
 day_notes = notes_data.get(selected_day_str, [])
 
-if day_notes:
-    st.write("📝 Existing Notes:")
-    for i, note in enumerate(day_notes, 1):
-        st.write(f"{i}. {note}")
+# Display existing notes with checkboxes
+st.write("📝 Existing Notes:")
+for i, note_item in enumerate(day_notes):
+    # note_item can be string or dict with done status
+    if isinstance(note_item, dict):
+        note_text = note_item.get("note", "")
+        done_status = note_item.get("done", False)
+    else:
+        note_text = note_item
+        done_status = False
+
+    done_checkbox = st.checkbox(note_text, value=done_status, key=f"{selected_day_str}_{i}")
+    # Update done status
+    if isinstance(note_item, dict):
+        note_item["done"] = done_checkbox
+    else:
+        day_notes[i] = {"note": note_text, "done": done_checkbox}
+
+# Save updated done status
+notes_data[selected_day_str] = day_notes
+save_notes(notes_data)
 
 # Add new note
 new_note = st.text_area("Add a new note:")
@@ -69,10 +85,10 @@ if st.button("💾 Save Note"):
     if not new_note.strip():
         st.warning("Please enter a note before saving!")
     else:
-        notes_data.setdefault(selected_day_str, []).append(new_note.strip())
+        day_notes.append({"note": new_note.strip(), "done": False})
+        notes_data[selected_day_str] = day_notes
         save_notes(notes_data)
         st.success("Note saved!")
-        st.experimental_rerun()  # Refresh page to show updated notes
 
 # ---------------------
 # Optional: Download all notes
