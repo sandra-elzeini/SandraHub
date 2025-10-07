@@ -2,7 +2,7 @@ import streamlit as st
 from transformers import pipeline
 import re
 
-st.title("SandraHub — Structured Offline Summarizer 🤖")
+st.title("SandraHub — Professional Meeting Minutes 🧠")
 st.write("Paste your meeting notes to get a concise, categorized summary.")
 
 # Load the summarization model once
@@ -14,40 +14,47 @@ summarizer = load_model()
 
 notes = st.text_area("📝 Paste your meeting notes here:")
 
-if st.button("✨ Generate Smart Summary"):
+if st.button("✨ Generate Meeting Minutes"):
     if not notes.strip():
         st.warning("Please paste some notes first.")
     else:
         with st.spinner("Generating summary... ⏳"):
-            # Summarize notes (adjust max/min length if needed)
-            summary_list = summarizer(notes, max_length=200, min_length=50, do_sample=False)
+            summary_list = summarizer(notes, max_length=250, min_length=50, do_sample=False)
             summary_text = summary_list[0]['summary_text']
 
-        # Split into sentences
-        sentences = re.split(r'(?<=[.!?])\s+', summary_text)
+        # Split into sentences, also split at "-" or ":"
+        raw_sentences = re.split(r'[.!?]', summary_text)
+        sentences = []
+        for s in raw_sentences:
+            for part in re.split(r' - | : ', s):
+                part_clean = part.strip()
+                if part_clean:
+                    sentences.append(part_clean)
 
         # Prepare categories
         times = []
         events = []
         tasks = []
 
-        # Simple keyword-based categorization
+        # Keyword patterns
         time_keywords = r'\b\d{1,2}(:\d{2})?\s*(AM|PM|am|pm)?\b|\b(next|today|tomorrow|October|November|Nov|Oct)\b'
-        task_keywords = r'\b(assign|assigned|task|qa|prepare|provide|review|finalize|begin|complete|responsible|Farah|Omar|Sandra)\b'
+        task_keywords = r'\b(Farah|Omar|Sandra|QA|assigned|prepare|provide|review|finalize|begin|complete|responsible)\b'
         event_keywords = r'\b(meeting|launch|event|deadline|decision|starts|begins|confirmed|discussion|design)\b'
 
+        # Categorize sentences
         for s in sentences:
-            s_clean = s.strip()
-            s_lower = s_clean.lower()
-            if re.search(time_keywords, s_clean):
-                times.append(s_clean)
-            elif re.search(task_keywords, s_clean):
-                tasks.append(s_clean)
-            elif re.search(event_keywords, s_clean):
-                events.append(s_clean)
+            s_lower = s.lower()
+            if re.search(task_keywords, s, re.IGNORECASE):
+                tasks.append(s)
+            elif re.search(event_keywords, s, re.IGNORECASE):
+                events.append(s)
+            elif re.search(time_keywords, s, re.IGNORECASE):
+                times.append(s)
+            else:
+                events.append(s)  # Default to events if uncategorized
 
         # Display structured summary
-        st.subheader("🧠 Smart Summary")
+        st.subheader("🧠 Smart Meeting Minutes")
 
         if times:
             st.write("🕒 Times & Dates:")
