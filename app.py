@@ -1,46 +1,38 @@
 import streamlit as st
-from openai import OpenAI
-import os
+import re
+from heapq import nlargest
 
-st.set_page_config(page_title="SandraHub — AI Summarizer", page_icon="🤖")
+st.title("SandraHub — Offline Smart Summarizer 🧠")
+st.write("Paste your notes below and get a concise summary ")
 
-st.title("SandraHub — AI-Powered Meeting Summarizer 🤖")
-st.write("Paste your meeting notes below and get a **concise, smart summary** using AI.")
+text = st.text_area("📝 Paste meeting notes here:")
 
-api_key = st.text_input("🔑 Enter your OpenAI API Key:", type="password")
-
-notes = st.text_area("📝 Paste your meeting notes here:")
-
-if st.button("✨ Generate Smart Summary"):
-    if not notes.strip():
+if st.button("✨ Summarize Notes"):
+    if not text.strip():
         st.warning("Please paste some notes first.")
-    elif not api_key.strip():
-        st.warning("Please enter your API key.")
     else:
-        try:
-            client = OpenAI(api_key=api_key)
+        # Clean text
+        text = re.sub(r'\s+', ' ', text)
+        sentences = re.split(r'(?<=[.!?])\s+', text)
 
-            st.info("Generating summary... please wait ⏳")
+        # Count word frequencies (ignoring common words)
+        words = re.findall(r'\w+', text.lower())
+        stopwords = {'the','a','an','in','on','and','to','for','of','at','by','is','was','it','that','this','as','be','with','from'}
+        freq = {}
+        for w in words:
+            if w not in stopwords:
+                freq[w] = freq.get(w, 0) + 1
 
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that summarizes meeting notes clearly and briefly."},
-                    {"role": "user", "content": f"Summarize these meeting notes into clear bullet points:\n\n{notes}"}
-                ],
-                temperature=0.5,
-            )
+        # Score each sentence by keyword frequency
+        sentence_scores = {}
+        for s in sentences:
+            for word in re.findall(r'\w+', s.lower()):
+                if word in freq:
+                    sentence_scores[s] = sentence_scores.get(s, 0) + freq[word]
 
-            summary = response.choices[0].message.content.strip()
-            st.subheader("🧠 Smart Summary:")
-            st.write(summary)
+        # Pick the top 3–5 sentences
+        summary_sentences = nlargest(5, sentence_scores, key=sentence_scores.get)
+        summary = ' '.join(summary_sentences)
 
-            st.download_button(
-                label="💾 Download Summary",
-                data=summary.encode("utf-8"),
-                file_name="smart_summary.txt",
-                mime="text/plain"
-            )
-
-        except Exception as e:
-            st.error(f"Error: {e}")
+        st.subheader("🧠 Smart Summary:")
+        st.write(summary)
