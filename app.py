@@ -1,11 +1,15 @@
 import streamlit as st
 from datetime import datetime, timedelta
 from pymongo import MongoClient
+import json
+
+st.set_page_config(page_title="SandraHub — Weekly Notes", page_icon="📝")
+st.title("SandraHub — Notes for the Week 📝")
 
 # ---------------------------
 # MongoDB Connection
 # ---------------------------
-mongo_uri = st.secrets["mongodb"]["uri"]
+mongo_uri = st.secrets["mongodb"]["uri"]  # Make sure your secrets.toml has the correct uri
 client = MongoClient(mongo_uri)
 db = client["sandrahub_db"]
 notes_collection = db["weekly_notes"]
@@ -14,7 +18,7 @@ notes_collection = db["weekly_notes"]
 # Helper Functions
 # ---------------------------
 def get_week_start(date):
-    """Return the Sunday of the week for a given date"""
+    """Return Sunday of the week for a given date"""
     return date - timedelta(days=date.weekday() + 1 if date.weekday() != 6 else 0)
 
 def format_week_range(start_date):
@@ -24,56 +28,111 @@ def format_week_range(start_date):
 
 def get_or_create_week_notes(week_start):
     """Get notes doc for a week, or create if missing"""
-    week_key = format_week_range(week_start)
-    doc = notes_collection.find_one({"week": week_key})
+    week_key = week_start.strftime("%Y-%m-%d")
+    doc = notes_collection.find_one({"week_start": week_key})
     if not doc:
-        days = {}
-        for i in range(7):
-            day = week_start + timedelta(days=i)
-            days[day.strftime("%Y-%m-%d")] = []
-        doc = {"week": week_key, "days": days}
+        days = { (week_start + timedelta(days=i)).strftime("%Y-%m-%d"): [] for i in range(7) }
+        doc = {"week_start": week_key, "days": days}
         notes_collection.insert_one(doc)
     return doc
 
 def save_week_notes(doc):
-    notes_collection.update_one({"week": doc["week"]}, {"$set": {"days": doc["days"]}})
+    notes_collection.replace_one({"week_start": doc["week_start"]}, doc)
+
+def clean_doc_for_json(doc):
+    """Remove ObjectId so JSON can be serialized"""
+    doc_clean = doc.copy()
+    if "_id" in doc_clean:
+        doc_clean["_id"] = str(doc_clean["_id"])
+    return doc_clean
 
 # ---------------------------
-# Session State Defaults
+# Session State for safe reruns
 # ---------------------------
-today = datetime.today()
-if "selected_date" not in st.session_state:
-    st.session_state.selected_date = today
+if "week_index" not in st.session_state:
+    today = datetime.today()
+    current_year = today.year
+    current_week_start = get_week_start(today)
+    st.session_state["week_index"] = None  # We'll set below
 
-if "save_trigger" not in st.session_state:
-    st.session_state.save_trigger = False
-
-# ---------------------------
-# Select Year (optional)
-# ---------------------------
-year_options = list(range(today.year - 1, today.year + 2))
-selected_year = st.selectbox("Select Year", year_options, index=year_options.index(today.year))
+if "day_index" not in st.session_state:
+    st.session_state["day_index"] = None  # We'll set below
 
 # ---------------------------
-# Week Navigation
+# Sidebar: Year / Week / Day selection
 # ---------------------------
-current_week_start = get_week_start(st.session_state.selected_date)
-week_doc = get_or_create_week_notes(current_week_start)
+current_year = datetime.today().year
+year_selected = st.sidebar.selectbox(
+    "Select Year", list(range(current_year-1, current_year+5)), index=1
+)
 
-st.header("SandraHub — Notes for the Week 📝")
-st.subheader(f"Week: {week_doc['week']}")
+# Generate weeks for the selected year
+first_day = datetime(year_selected, 1, 1)
+weeks = [get_week_start(first_day + timedelta(days=i*7)) for i in range(53)]
+week_display = [format_week_range(w) for w in weeks]
+
+# Default to current week if session state not set
+if st.session_state["week_index"] is None:
+    for i, w in enumerate(weeks):
+        if w <= datetime.today() <= w + timedelta(days=6):
+            st.session_state["week_index"] = i
+            break
+    if st.session_state["week_index"] is None:
+        st.session_state["week_index"] = 0
+
+week_selected_index = st.sidebar.selectbox(
+    "Select Week", range(len(weeks)), 
+    format_func=lambda i: week_display[i], 
+    index=st.session_state["week_index"]
+)
+st.session_state["week_index"] = week_selected_index
+week_start = weeks[week_selected_index]
+
+# Generate days for selected week
+days = [week_start + timedelta(days=i) for i in range(7)]
+
+# Default to current day if session state not set
+if st.session_state["day_index"] is None:
+    for i, d in enumerate(days):
+        if d.date() == datetime.today().date():
+            st.session_state["day_index"] = i
+            break
+    if st.session_state["day_index"] is None:
+        st.session_state["day_index"] = 0
+
+day_selected_index = st.sidebar.selectbox(
+    "Select Day", range(7), 
+    format_func=lambda i: days[i].strftime("%A, %b %d, %Y"),
+    index=st.session_state["day_index"]
+)
+st.session_state["day_index"] = day_selected_index
+day_selected = days[day_selected_index]
+day_str = day_selected.strftime("%Y-%m-%d")
 
 # ---------------------------
-# Select Day
+# Load or create week notes
 # ---------------------------
-days = list(week_doc["days"].keys())
-day_str = st.selectbox("Select Day", days, index=days.index(st.session_state.selected_date.strftime("%Y-%m-%d")))
-day_notes = week_doc["days"][day_str]
+week_doc = get_or_create_week_notes(week_start)
+day_notes = week_doc["days"].get(day_str, [])
 
-st.subheader(f"📝 Notes for {datetime.strptime(day_str, '%Y-%m-%d').strftime('%A, %b %d, %Y')}")
-st.text("📝 Existing Notes:")
+# ---------------------------
+# Display notes and allow edits
+# ---------------------------
+st.subheader(f"Week: {format_week_range(week_start)}")
+st.write(f"📝 Notes for {day_selected.strftime('%A, %b %d, %Y')}")
+
+st.write("📝 Existing Notes:")
 for i, note in enumerate(day_notes):
-    st.text(f"{i+1}. {note}")
+    note_text = note if isinstance(note, str) else note.get("note", "")
+    col1, col2 = st.columns([0.9,0.1])
+    with col1:
+        st.text_input(f"Note {i+1}", value=note_text, key=f"{day_str}_{i}")
+    with col2:
+        if st.button("🗑️", key=f"delete_{day_str}_{i}"):
+            day_notes.pop(i)
+            week_doc["days"][day_str] = day_notes
+            save_week_notes(week_doc)
+            st.experimental_rerun()  # Safe rerun via session_state
 
 # ---------------------------
 # Add new note
@@ -85,26 +144,17 @@ if st.button("💾 Save Note"):
         week_doc["days"][day_str] = day_notes
         save_week_notes(week_doc)
         st.success("Note saved!")
-        st.session_state.save_trigger = True  # safe rerun
+        st.experimental_rerun()
+    else:
+        st.warning("Please enter a note before saving!")
 
 # ---------------------------
-# Delete notes
+# Download week notes
 # ---------------------------
-for i, note in enumerate(day_notes.copy()):
-    col1, col2 = st.columns([0.9, 0.1])
-    with col1:
-        st.text_input(f"Note {i+1}", value=note, key=f"{day_str}_{i}")
-    with col2:
-        if st.button("🗑️", key=f"delete_{day_str}_{i}"):
-            day_notes.pop(i)
-            week_doc["days"][day_str] = day_notes
-            save_week_notes(week_doc)
-            st.success("Note deleted!")
-            st.session_state.save_trigger = True
-
-# ---------------------------
-# Safe rerun if triggered
-# ---------------------------
-if st.session_state.save_trigger:
-    st.session_state.save_trigger = False
-    st.experimental_rerun()
+week_doc_clean = clean_doc_for_json(week_doc)
+all_notes_str = json.dumps(week_doc_clean, indent=2)
+st.download_button(
+    "💾 Download Week Notes",
+    all_notes_str,
+    file_name=f"weekly_notes_{week_start.strftime('%Y-%m-%d')}.json"
+)
