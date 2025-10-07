@@ -5,7 +5,7 @@ from pymongo import MongoClient
 # ---------------------------
 # MongoDB Connection
 # ---------------------------
-mongo_uri = st.secrets["mongodb"]["uri"]  # Ensure this is correctly set in secrets.toml
+mongo_uri = st.secrets["mongodb"]["uri"]  # Ensure correct URI in secrets.toml
 client = MongoClient(mongo_uri)
 db = client["sandrahub_db"]
 notes_collection = db["weekly_notes"]
@@ -45,34 +45,45 @@ def save_day_notes(week_key, day_str, day_notes):
         {"$set": {f"days.{day_str}": day_notes}}
     )
 
+def all_weeks_in_year(year):
+    """Return list of week start dates (Sundays) for the entire year"""
+    d = datetime(year, 1, 1)
+    weeks = []
+    # Move to the first Sunday
+    d += timedelta(days=(6 - d.weekday()) % 7)
+    while d.year == year:
+        weeks.append(d)
+        d += timedelta(weeks=1)
+    return weeks
+
 # ---------------------------
 # Main App
 # ---------------------------
 st.set_page_config(page_title="SandraHub — Weekly Notes", page_icon="📝")
 st.title("SandraHub — Notes for the Week 📝")
 
-# Determine current week
-today = datetime.today()
-current_week_start = get_week_start(today)
-week_doc = get_or_create_week_notes(current_week_start)
-week_str = format_week_range(current_week_start)
+# Sidebar: Select Year
+current_year = datetime.today().year
+selected_year = st.sidebar.selectbox("Select Year:", range(current_year - 5, current_year + 6), index=5)
 
-# Sidebar: Select week
+# Sidebar: Select Week
 st.sidebar.header("Select Week")
-# For simplicity, allow ±4 weeks around today
-weeks_options = [(current_week_start + timedelta(weeks=i)) for i in range(-4, 5)]
+weeks_options = all_weeks_in_year(selected_year)
 week_labels = [format_week_range(w) for w in weeks_options]
-selected_week_idx = st.sidebar.selectbox("Choose a week:", range(len(weeks_options)), format_func=lambda i: week_labels[i], index=4)
+today = datetime.today()
+# Default week = current week if in selected year
+default_week_idx = next((i for i, w in enumerate(weeks_options) if get_week_start(today) == w), 0)
+selected_week_idx = st.sidebar.selectbox("Choose a week:", range(len(weeks_options)), format_func=lambda i: week_labels[i], index=default_week_idx)
 selected_week_start = weeks_options[selected_week_idx]
+
 week_doc = get_or_create_week_notes(selected_week_start)
 week_key = f"{selected_week_start.isocalendar()[0]}-W{selected_week_start.isocalendar()[1]}"
 
-# Sidebar: Select day
+# Sidebar: Select Day
 st.sidebar.header("Select Day")
 week_days = [(selected_week_start + timedelta(days=i)) for i in range(7)]
 day_labels = [d.strftime("%A (%b %d, %Y)") for d in week_days]
-# Default to today if in selected week
-default_day_idx = (today - selected_week_start).days if current_week_start == selected_week_start else 0
+default_day_idx = (today - selected_week_start).days if today >= selected_week_start and today < selected_week_start + timedelta(days=7) else 0
 selected_day_idx = st.sidebar.selectbox("Choose a day:", range(7), format_func=lambda i: day_labels[i], index=default_day_idx)
 selected_day = week_days[selected_day_idx]
 selected_day_str = selected_day.strftime("%Y-%m-%d")
@@ -98,7 +109,7 @@ for i, note_item in enumerate(day_notes.copy()):
         if st.button("❌", key=f"delete_{selected_day_str}_{i}"):
             day_notes.pop(i)
             save_day_notes(week_key, selected_day_str, day_notes)
-            st.experimental_rerun()  # Refresh page after deletion
+            st.experimental_rerun()  # Refresh after deletion
 
     # Update done status
     if isinstance(note_item, dict):
@@ -115,11 +126,13 @@ if st.button("💾 Save Note"):
     if new_note.strip():
         day_notes.append({"note": new_note.strip(), "done": False})
         save_day_notes(week_key, selected_day_str, day_notes)
-        st.success("Note saved!")
         st.experimental_rerun()
     else:
         st.warning("Please enter a note before saving!")
 
-# Optional: Download all notes
-all_notes_str = str(week_doc)  # Simple string; you can convert to JSON if desired
-st.download_button("💾 Download This Week's Notes", all_notes_str, file_name=f"notes_{week_key}.txt")
+# Optional: Download weekly notes
+st.download_button(
+    "💾 Download This Week's Notes",
+    str(week_doc),
+    file_name=f"notes_{week_key}.txt"
+)
